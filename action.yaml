@@ -1,0 +1,92 @@
+---
+name: terraform-build
+description: Terraform Validation and Plan
+
+inputs:
+  working-directory:
+    description: Working Directory
+    required: false
+    default: "./"
+  terraform-version:
+    description: Terraform version
+    default: "1.2.3"
+    required: false
+  default-branch:
+    description: Target default branch
+    default: "main"
+    required: false
+  label:
+    description: Plan label
+    default: "plan"
+    required: false
+  google-service-account:
+    description: Google Service Account
+    required: true
+  google-workload-identity-provider:
+    description: Google Workload Identity Provider
+    required: true
+
+runs:
+  using: composite
+  steps:
+  - uses: hashicorp/setup-terraform@v1
+    with:
+      terraform_version: ${{ inputs.terraform-version  }}
+
+  - id: auth
+    uses: 'google-github-actions/auth@v0'
+    with:
+      workload_identity_provider: ${{ inputs.google-workload-identity-provider  }}
+      service_account: ${{ inputs.google-service-account  }}
+      access_token_lifetime: '300s'
+
+  - name: 'Terraform Init'
+    shell: bash
+    id: init
+    working-directory: ${{ inputs.working-directory  }}
+    run: terraform init
+
+  - name: 'Terraform Validate'
+    shell: bash
+    id: validate
+    working-directory: ${{ inputs.working-directory  }}
+    run: terraform validate
+
+  - name: Terraform Plan
+    shell: bash
+    id: plan
+    working-directory: ${{ inputs.working-directory  }}
+    run: terraform plan -no-color
+
+  - uses: actions/github-script@v6
+    if: always() && github.ref != format('refs/heads/{0}', inputs.defaultBranch) && (steps.plan.outcome == 'success' || steps.plan.outcome == 'failure') && github.event_name == 'pull_request'
+    env:
+      PLAN: ${{ format('{0}{1}', steps.plan.outputs.stdout, steps.plan.outputs.stderr) }}
+    with:
+      github-token: ${{ inputs.githubToken }}
+      script: |
+        const output = `
+        #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+
+        #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+
+        #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+        <details><summary>Show Plan</summary>
+
+        \`\`\`\n
+        ${process.env.PLAN}
+        \`\`\`
+
+        </details>
+
+        *Label: ${{ inputs.label }}*
+
+        *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+
+        github.rest.issues.createComment({
+          issue_number: context.issue.number,
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          body: output
+        })
