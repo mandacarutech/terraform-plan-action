@@ -1,5 +1,5 @@
 ---
-name: terraform-build
+name: terraform-plan
 description: Terraform Validation and Plan
 
 inputs:
@@ -62,7 +62,7 @@ runs:
     run: terraform plan -no-color
 
   - uses: actions/github-script@v6
-    if: always() && github.ref != format('refs/heads/{0}', inputs.defaultBranch) && (steps.plan.outcome == 'success' || steps.plan.outcome == 'failure') && github.event_name == 'pull_request'
+    if: always() && github.ref != format('refs/heads/{0}', inputs.default-branch) && (steps.plan.outcome == 'success' || steps.plan.outcome == 'failure') && github.event_name == 'pull_request'
     env:
       PLAN: ${{ format('{0}{1}', steps.plan.outputs.stdout, steps.plan.outputs.stderr) }}
     with:
